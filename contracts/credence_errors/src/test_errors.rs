@@ -5,122 +5,13 @@ mod tests {
     use soroban_sdk::testutils::Address as _;
     use std::vec::Vec;
 
+    // One row per `ContractError` variant; shared with the integration tests.
     include!("../variant_table.rs");
 
     fn all_variants() -> Vec<ContractError> {
-        std::vec![
-            ContractError::NotInitialized,
-            ContractError::AlreadyInitialized,
-            ContractError::NotAdmin,
-            ContractError::NotBondOwner,
-            ContractError::UnauthorizedAttester,
-            ContractError::NotOriginalAttester,
-            ContractError::NotSigner,
-            ContractError::UnauthorizedDepositor,
-            ContractError::ContractPaused,
-            ContractError::BorrowFrozen,
-            ContractError::InvalidPauseAction,
-            ContractError::InsufficientSignatures,
-            ContractError::AdminSuspended,
-            ContractError::NoPendingAdmin,
-            ContractError::InvalidAdminAddress,
-            ContractError::AdminUnchanged,
-            ContractError::TimelockNotReady,
-            ContractError::EmergencyDrainNotPermitted,
-            ContractError::RoleNotHeldAtLedger,
-            ContractError::ZeroBytes32,
-            ContractError::CrossContractCallerMismatch,
-            ContractError::TimestampInFuture,
-            ContractError::LeaseScopeMismatch,
-            ContractError::LeaseExpired,
-            ContractError::DeadlineExpired,
-            ContractError::CorridorNotRegistered,
-            ContractError::InvalidPercentSplit,
-            ContractError::InvalidStringifiedBytes,
-            ContractError::SnapshotGenerationMismatch,
-            ContractError::StaleAdminEpoch,
-            ContractError::StaleSignerEpoch,
-            ContractError::InvalidCurrency,
-            ContractError::BondNotFound,
-            ContractError::BondNotActive,
-            ContractError::InsufficientBalance,
-            ContractError::SlashExceedsBond,
-            ContractError::LockupNotExpired,
-            ContractError::NotRollingBond,
-            ContractError::WithdrawalAlreadyRequested,
-            ContractError::ReentrancyDetected,
-            ContractError::InvalidNonce,
-            ContractError::NegativeStake,
-            ContractError::EarlyExitConfigNotSet,
-            ContractError::InvalidPenaltyBps,
-            ContractError::LeverageExceeded,
-            ContractError::UnsupportedToken,
-            ContractError::UnsupportedDecimals,
-            ContractError::InvalidBondAmount,
-            ContractError::AmountExplicitlyZero,
-            ContractError::InvalidBondDuration,
-            ContractError::InvalidNoticePeriod,
-            ContractError::BondAlreadyExists,
-            ContractError::UnauthorizedToken,
-            ContractError::DuplicateIdempotencyKey,
-            ContractError::InvalidStringifiedBytes,
-            ContractError::InvariantViolation,
-            ContractError::StorageCapReached,
-            ContractError::TreasuryNotConfigured,
-            ContractError::CursorOutOfRange,
-            ContractError::DomainMismatch,
-            ContractError::OwnerMismatch,
-            ContractError::TargetMismatch,
-            ContractError::ContractIdMismatch,
-            ContractError::SignatureExpired,
-            ContractError::DuplicateAttestation,
-            ContractError::AttestationNotFound,
-            ContractError::AttestationAlreadyRevoked,
-            ContractError::InvalidAttestationWeight,
-            ContractError::AttestationWeightExceedsMax,
-            ContractError::IdentityAlreadyRegistered,
-            ContractError::BondContractAlreadyRegistered,
-            ContractError::IdentityNotRegistered,
-            ContractError::BondContractNotRegistered,
-            ContractError::AlreadyDeactivated,
-            ContractError::AlreadyActive,
-            ContractError::InvalidContractAddress,
-            ContractError::ContractCodeVerificationFailed,
-            ContractError::UnsupportedInterface,
-            ContractError::ExpiryInPast,
-            ContractError::DelegationNotFound,
-            ContractError::AlreadyRevoked,
-            ContractError::DelegationExpiryTooLong,
-            ContractError::UnknownScheme,
-            ContractError::VerifierAlreadyRegistered,
-            ContractError::VerifierNotRegistered,
-            ContractError::VerificationFailed,
-            ContractError::RevocationGraceExpired,
-            ContractError::DelegationNotExpired,
-            ContractError::DelegationInactive,
-            ContractError::PromiseNotKept,
-            ContractError::AmountMustBePositive,
-            ContractError::ThresholdExceedsSigners,
-            ContractError::InsufficientTreasuryBalance,
-            ContractError::ProposalNotFound,
-            ContractError::ProposalAlreadyExecuted,
-            ContractError::InsufficientApprovals,
-            ContractError::InvalidFlashLoanCallback,
-            ContractError::FlashLoanRepaymentFailed,
-            ContractError::ProposalExpired,
-            ContractError::SlippageExceeded,
-            ContractError::TreasuryBeneficiaryMismatch,
-            ContractError::Overflow,
-            ContractError::Underflow,
-            ContractError::DivisionByZero,
-            ContractError::BatchTooLarge,
-            ContractError::EmptyBatch,
-            ContractError::InvalidCurrency,
-            ContractError::PayloadTooOld,
-            ContractError::TimestampInFuture,
-            ContractError::StaleAdminEpoch,
-            ContractError::StaleSignerEpoch,
-        ]
+        // Derived from the canonical table so this list cannot drift
+        // away from `variant_table.rs`.
+        ALL_VARIANTS.iter().map(|(_, variant)| *variant).collect()
     }
 
     // --- require_contract_uninitialized helper tests ---
@@ -195,13 +86,14 @@ mod tests {
         assert_eq!(ContractError::ContractPaused as u32, 106);
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
-        assert_eq!(ContractError::ZeroBytes32 as u32, 109);
+        // #109 was reassigned; ZeroBytes32 now carries the wire code 127.
+        assert_eq!(ContractError::ZeroBytes32 as u32, 127);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
     #[test]
     fn test_code_role_required() {
-        assert_eq!(ContractError::RoleRequired as u32, 127);
+        assert_eq!(ContractError::RoleRequired as u32, 128);
     }
 
     #[test]
@@ -582,7 +474,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            101,
+            116,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1373,13 +1265,12 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
-            ContractError::MigrationInProgress => true, // wait for migration to complete
-            ContractError::OutsideBusinessHours => true, // retry after business-hours window opens
-            ContractError::TimestampInFuture => true,   // caller can correct timestamp
+            ContractError::TimestampInFuture => true, // caller can correct timestamp
             ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
             ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
             ContractError::LeaseScopeMismatch => true,
             ContractError::LeaseExpired => true,
+            ContractError::LeaseSignerMismatch => true,
             ContractError::CrossContractCallerMismatch => false,
             ContractError::RoleRequired => true,
             ContractError::StaleAdminEpoch => false,
@@ -1394,7 +1285,10 @@ mod tests {
             ContractError::LockupNotExpired => true,
             ContractError::NotRollingBond => true,
             ContractError::WithdrawalAlreadyRequested => true,
-            ContractError::ReentrancyDetected => false, // SECURITY HALT
+            ContractError::CooldownRequestAlreadyPending => true, // wait for the pending request
+            ContractError::CooldownRequestNotFound => true,       // create the request first
+            ContractError::CooldownPeriodNotElapsed => true,      // wait for the cooldown window
+            ContractError::ReentrancyDetected => false,           // SECURITY HALT
             ContractError::InvalidNonce => true,
             ContractError::SignatureExpired => true, // re-sign
             ContractError::NegativeStake => true,
@@ -1417,6 +1311,7 @@ mod tests {
             ContractError::DomainMismatch => false,       // payload binding
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
+            ContractError::BytesTooLarge => true,         // resubmit with shorter input
             ContractError::InvalidCurrency => true,       // supply a valid currency
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
@@ -1840,11 +1735,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #127)")]
+    #[should_panic(expected = "Error(Contract, #128)")]
     fn test_require_role_user_panics_when_not_held() {
         let e = soroban_sdk::Env::default();
         let actor = soroban_sdk::Address::generate(&e);
-        // Negative test: actor does NOT hold User role -> should panic with RoleRequired (127).
+        // Negative test: actor does NOT hold User role -> should panic with RoleRequired (128).
         crate::require_role(&e, Role::User, &actor, false);
     }
 }
