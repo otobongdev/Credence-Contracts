@@ -7,7 +7,7 @@
 
 use crate::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{Address as _, Events as _, Ledger as _},
     Address, Env,
 };
 
@@ -61,10 +61,12 @@ fn rejected_acceptance_rolls_back_when_candidate_is_suspended() {
     let suspension_end = env.ledger().timestamp() + 1;
     client.suspend_admin(&owner, &candidate, &suspension_end);
 
-    let events_before = env.events().all().len();
     assert!(client.try_accept_ownership(&candidate).is_err());
 
+    // State is untouched by the rejected call …
     assert_eq!(client.get_owner(), owner);
     assert_eq!(client.get_pending_owner(), Some(candidate));
-    assert_eq!(env.events().all().len(), events_before);
+    // … and the rolled-back invocation left no observable events behind: the
+    // frame it would have written to is discarded entirely.
+    assert_eq!(env.events().all().len(), 0);
 }

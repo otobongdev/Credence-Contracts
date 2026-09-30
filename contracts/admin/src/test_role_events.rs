@@ -156,6 +156,43 @@ fn count_role_events(env: &Env) -> usize {
         .count()
 }
 
+/// The role-event topic names emitted by the **most recent** invocation, in
+/// emission order.
+///
+/// `events().all()` is scoped to the frame of the invocation that just ran, so
+/// this never returns events from an earlier call.
+fn role_event_names(env: &Env) -> std::vec::Vec<&'static str> {
+    let ra = Symbol::new(env, "ROLE_ASSIGNED");
+    let rr = Symbol::new(env, "ROLE_REVOKED");
+    env.events()
+        .all()
+        .iter()
+        .filter_map(|(_, topics, _)| {
+            topics
+                .get(0)
+                .and_then(|v| Symbol::try_from_val(env, &v).ok())
+                .and_then(|s| {
+                    if s == ra {
+                        Some("ASSIGNED")
+                    } else if s == rr {
+                        Some("REVOKED")
+                    } else {
+                        None
+                    }
+                })
+        })
+        .collect()
+}
+
+/// Append the role events of the invocation that just ran to `out`.
+///
+/// A multi-step sequence must be captured step by step: each invocation has
+/// its own frame, and only the latest one is visible through `events().all()`.
+/// Steps are appended in call order, which is the emission order.
+fn record_role_events(env: &Env, out: &mut std::vec::Vec<&'static str>) {
+    out.extend(role_event_names(env));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. add_admin — event payload
 // ═══════════════════════════════════════════════════════════════════════════
@@ -203,7 +240,6 @@ fn add_admin_emits_exactly_one_role_assigned_event() {
     let (contract, super_admin) = setup(&env);
     let new_admin = Address::generate(&env);
 
-    let before = count_role_events(&env);
     env.as_contract(&contract, || {
         AdminContract::add_admin(
             env.clone(),
@@ -212,10 +248,10 @@ fn add_admin_emits_exactly_one_role_assigned_event() {
             AdminRole::Admin,
         );
     });
-    let after = count_role_events(&env);
-
+    // `events().all()` is scoped to the frame of the invocation that
+    // just ran, so this counts exactly the events that call emitted.
     assert_eq!(
-        after - before,
+        count_role_events(&env),
         1,
         "add_admin must emit exactly 1 role event"
     );
@@ -258,14 +294,13 @@ fn remove_admin_emits_exactly_one_role_revoked_event() {
     let (contract, super_admin) = setup(&env);
     let admin = with_admin(&env, &contract, &super_admin);
 
-    let before = count_role_events(&env);
     env.as_contract(&contract, || {
         AdminContract::remove_admin(env.clone(), super_admin.clone(), admin.clone());
     });
-    let after = count_role_events(&env);
-
+    // `events().all()` is scoped to the frame of the invocation that
+    // just ran, so this counts exactly the events that call emitted.
     assert_eq!(
-        after - before,
+        count_role_events(&env),
         1,
         "remove_admin must emit exactly 1 role event"
     );
@@ -302,7 +337,6 @@ fn update_admin_role_emits_exactly_one_role_assigned_event() {
     let admin = with_admin(&env, &contract, &super_admin);
     let operator = with_operator(&env, &contract, &admin);
 
-    let before = count_role_events(&env);
     env.as_contract(&contract, || {
         AdminContract::update_admin_role(
             env.clone(),
@@ -311,10 +345,10 @@ fn update_admin_role_emits_exactly_one_role_assigned_event() {
             AdminRole::Admin,
         );
     });
-    let after = count_role_events(&env);
-
+    // `events().all()` is scoped to the frame of the invocation that
+    // just ran, so this counts exactly the events that call emitted.
     assert_eq!(
-        after - before,
+        count_role_events(&env),
         1,
         "update_admin_role must emit exactly 1 role event"
     );
@@ -367,14 +401,13 @@ fn deactivate_admin_emits_exactly_one_role_revoked_event() {
     let (contract, super_admin) = setup(&env);
     let admin = with_admin(&env, &contract, &super_admin);
 
-    let before = count_role_events(&env);
     env.as_contract(&contract, || {
         AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
-    let after = count_role_events(&env);
-
+    // `events().all()` is scoped to the frame of the invocation that
+    // just ran, so this counts exactly the events that call emitted.
     assert_eq!(
-        after - before,
+        count_role_events(&env),
         1,
         "deactivate_admin must emit exactly 1 role event"
     );
@@ -411,14 +444,13 @@ fn reactivate_admin_emits_exactly_one_role_assigned_event() {
         AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
 
-    let before = count_role_events(&env);
     env.as_contract(&contract, || {
         AdminContract::reactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
-    let after = count_role_events(&env);
-
+    // `events().all()` is scoped to the frame of the invocation that
+    // just ran, so this counts exactly the events that call emitted.
     assert_eq!(
-        after - before,
+        count_role_events(&env),
         1,
         "reactivate_admin must emit exactly 1 role event"
     );
@@ -448,8 +480,6 @@ fn unauthorized_add_admin_emits_no_role_event() {
     let impostor = Address::generate(&env);
     let target = Address::generate(&env);
 
-    let before = count_role_events(&env);
-
     // A plain address (not an admin) tries to add an admin — must panic.
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
@@ -465,7 +495,7 @@ fn unauthorized_add_admin_emits_no_role_event() {
     assert!(panicked, "call from non-admin must panic");
     assert_eq!(
         count_role_events(&env),
-        before,
+        0,
         "no role event must be emitted when the call is rejected"
     );
 }
@@ -477,8 +507,6 @@ fn admin_cannot_add_another_admin_emits_no_role_event() {
     let admin = with_admin(&env, &contract, &super_admin);
     let target = Address::generate(&env);
 
-    let before = count_role_events(&env);
-
     // Admin (role=2) tries to assign Admin (requires SuperAdmin=3) — must panic.
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
@@ -487,11 +515,7 @@ fn admin_cannot_add_another_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Admin cannot assign Admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 #[test]
@@ -501,8 +525,6 @@ fn operator_cannot_add_operator_emits_no_role_event() {
     let admin = with_admin(&env, &contract, &super_admin);
     let operator = with_operator(&env, &contract, &admin);
     let target = Address::generate(&env);
-
-    let before = count_role_events(&env);
 
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
@@ -516,11 +538,7 @@ fn operator_cannot_add_operator_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot add anyone — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 // ── 6b. Unauthorized remove_admin ────────────────────────────────────────
@@ -532,8 +550,6 @@ fn operator_cannot_remove_admin_emits_no_role_event() {
     let admin = with_admin(&env, &contract, &super_admin);
     let operator = with_operator(&env, &contract, &admin);
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::remove_admin(env.clone(), operator.clone(), admin.clone());
@@ -541,11 +557,7 @@ fn operator_cannot_remove_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot remove Admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 #[test]
@@ -555,8 +567,6 @@ fn admin_cannot_remove_peer_admin_emits_no_role_event() {
     let admin1 = with_admin(&env, &contract, &super_admin);
     let admin2 = with_admin(&env, &contract, &super_admin);
 
-    let before = count_role_events(&env);
-
     // admin1 and admin2 are equal rank — neither can remove the other.
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
@@ -565,11 +575,7 @@ fn admin_cannot_remove_peer_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Admin cannot remove peer Admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 #[test]
@@ -580,8 +586,6 @@ fn non_admin_cannot_remove_operator_emits_no_role_event() {
     let operator = with_operator(&env, &contract, &admin);
     let stranger = Address::generate(&env);
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::remove_admin(env.clone(), stranger.clone(), operator.clone());
@@ -589,11 +593,7 @@ fn non_admin_cannot_remove_operator_emits_no_role_event() {
     }));
 
     assert!(panicked, "Stranger cannot remove Operator — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 // ── 6c. Unauthorized update_admin_role ────────────────────────────────────
@@ -604,8 +604,6 @@ fn admin_cannot_promote_to_admin_emits_no_role_event() {
     let (contract, super_admin) = setup(&env);
     let admin = with_admin(&env, &contract, &super_admin);
     let operator = with_operator(&env, &contract, &admin);
-
-    let before = count_role_events(&env);
 
     // Admin tries to promote operator to Admin (requires SuperAdmin) — must panic.
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
@@ -620,11 +618,7 @@ fn admin_cannot_promote_to_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Admin cannot promote to Admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 #[test]
@@ -634,8 +628,6 @@ fn operator_cannot_change_any_role_emits_no_role_event() {
     let admin = with_admin(&env, &contract, &super_admin);
     let operator = with_operator(&env, &contract, &admin);
     let op2 = with_operator(&env, &contract, &admin);
-
-    let before = count_role_events(&env);
 
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
@@ -649,11 +641,7 @@ fn operator_cannot_change_any_role_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot change roles — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 // ── 6d. Unauthorized deactivate_admin ─────────────────────────────────────
@@ -665,8 +653,6 @@ fn operator_cannot_deactivate_admin_emits_no_role_event() {
     let admin = with_admin(&env, &contract, &super_admin);
     let operator = with_operator(&env, &contract, &admin);
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::deactivate_admin(env.clone(), operator.clone(), admin.clone());
@@ -674,11 +660,7 @@ fn operator_cannot_deactivate_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot deactivate Admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 #[test]
@@ -688,8 +670,6 @@ fn admin_cannot_deactivate_peer_admin_emits_no_role_event() {
     let admin1 = with_admin(&env, &contract, &super_admin);
     let admin2 = with_admin(&env, &contract, &super_admin);
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::deactivate_admin(env.clone(), admin1.clone(), admin2.clone());
@@ -697,11 +677,7 @@ fn admin_cannot_deactivate_peer_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Admin cannot deactivate peer Admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 // ── 6e. Unauthorized reactivate_admin ─────────────────────────────────────
@@ -718,8 +694,6 @@ fn operator_cannot_reactivate_admin_emits_no_role_event() {
         AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::reactivate_admin(env.clone(), operator.clone(), admin.clone());
@@ -727,11 +701,7 @@ fn operator_cannot_reactivate_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot reactivate Admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 #[test]
@@ -745,8 +715,6 @@ fn stranger_cannot_reactivate_admin_emits_no_role_event() {
         AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::reactivate_admin(env.clone(), stranger.clone(), admin.clone());
@@ -754,11 +722,7 @@ fn stranger_cannot_reactivate_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Stranger cannot reactivate admin — must panic");
-    assert_eq!(
-        count_role_events(&env),
-        before,
-        "no role event on rejection"
-    );
+    assert_eq!(count_role_events(&env), 0, "no role event on rejection");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -770,8 +734,6 @@ fn adding_existing_admin_panics_and_emits_no_extra_role_event() {
     let env = Env::default();
     let (contract, super_admin) = setup(&env);
     let admin = with_admin(&env, &contract, &super_admin);
-
-    let before = count_role_events(&env);
 
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
@@ -787,7 +749,7 @@ fn adding_existing_admin_panics_and_emits_no_extra_role_event() {
     assert!(panicked, "duplicate add must panic");
     assert_eq!(
         count_role_events(&env),
-        before,
+        0,
         "no extra role event on duplicate add"
     );
 }
@@ -802,8 +764,6 @@ fn deactivating_already_inactive_admin_panics_and_emits_no_extra_role_event() {
         AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
@@ -813,7 +773,7 @@ fn deactivating_already_inactive_admin_panics_and_emits_no_extra_role_event() {
     assert!(panicked, "double deactivate must panic");
     assert_eq!(
         count_role_events(&env),
-        before,
+        0,
         "no extra role event on double deactivate"
     );
 }
@@ -824,8 +784,6 @@ fn reactivating_already_active_admin_panics_and_emits_no_extra_role_event() {
     let (contract, super_admin) = setup(&env);
     let admin = with_admin(&env, &contract, &super_admin);
 
-    let before = count_role_events(&env);
-
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
             AdminContract::reactivate_admin(env.clone(), super_admin.clone(), admin.clone());
@@ -833,7 +791,9 @@ fn reactivating_already_active_admin_panics_and_emits_no_extra_role_event() {
     }));
 
     assert!(panicked, "reactivating active admin must panic");
-    assert_eq!(count_role_events(&env), before, "no extra role event");
+    // The rejected call is rolled back, so no role event it may have
+    // emitted is observable afterwards.
+    assert_eq!(count_role_events(&env), 0, "no extra role event");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -846,6 +806,8 @@ fn sequence_add_update_remove_produces_correct_event_types_in_order() {
     let (contract, super_admin) = setup(&env);
     let target = Address::generate(&env);
 
+    let mut seen: std::vec::Vec<&str> = std::vec::Vec::new();
+
     // 1. add as Operator
     env.as_contract(&contract, || {
         AdminContract::add_admin(
@@ -855,6 +817,7 @@ fn sequence_add_update_remove_produces_correct_event_types_in_order() {
             AdminRole::Operator,
         );
     });
+    record_role_events(&env, &mut seen);
 
     // 2. promote to Admin
     env.as_contract(&contract, || {
@@ -865,39 +828,17 @@ fn sequence_add_update_remove_produces_correct_event_types_in_order() {
             AdminRole::Admin,
         );
     });
+    record_role_events(&env, &mut seen);
 
     // 3. remove
     env.as_contract(&contract, || {
         AdminContract::remove_admin(env.clone(), super_admin.clone(), target.clone());
     });
-
-    // Collect all role events in emission order
-    let ra = Symbol::new(&env, "ROLE_ASSIGNED");
-    let rr = Symbol::new(&env, "ROLE_REVOKED");
-
-    let role_events: std::vec::Vec<&str> = env
-        .events()
-        .all()
-        .iter()
-        .filter_map(|(_, topics, _)| {
-            topics
-                .get(0)
-                .and_then(|v| Symbol::try_from_val(&env, &v).ok())
-                .and_then(|s| {
-                    if s == ra {
-                        Some("ASSIGNED")
-                    } else if s == rr {
-                        Some("REVOKED")
-                    } else {
-                        None
-                    }
-                })
-        })
-        .collect();
+    record_role_events(&env, &mut seen);
 
     // add → ASSIGNED, update → ASSIGNED, remove → REVOKED
     assert_eq!(
-        role_events,
+        seen,
         std::vec!["ASSIGNED", "ASSIGNED", "REVOKED"],
         "role events must appear in add/update/remove order"
     );
@@ -909,50 +850,22 @@ fn deactivate_then_reactivate_produces_revoked_then_assigned() {
     let (contract, super_admin) = setup(&env);
     let admin = with_admin(&env, &contract, &super_admin);
 
-    // Drain events produced by setup
-    let baseline = count_role_events(&env);
+    let mut seen: std::vec::Vec<&str> = std::vec::Vec::new();
 
     env.as_contract(&contract, || {
         AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
+    record_role_events(&env, &mut seen);
     env.as_contract(&contract, || {
         AdminContract::reactivate_admin(env.clone(), super_admin.clone(), admin.clone());
     });
+    record_role_events(&env, &mut seen);
 
-    // Two new role events: REVOKED then ASSIGNED
-    assert_eq!(count_role_events(&env) - baseline, 2);
-
-    let ra = Symbol::new(&env, "ROLE_ASSIGNED");
-    let rr = Symbol::new(&env, "ROLE_REVOKED");
-    let new_events: std::vec::Vec<&str> = env
-        .events()
-        .all()
-        .iter()
-        .skip_while(|(_, topics, _)| {
-            topics
-                .get(0)
-                .and_then(|v| Symbol::try_from_val(&env, &v).ok())
-                .map(|s| s != rr)
-                .unwrap_or(true)
-        })
-        .filter_map(|(_, topics, _)| {
-            topics
-                .get(0)
-                .and_then(|v| Symbol::try_from_val(&env, &v).ok())
-                .and_then(|s| {
-                    if s == ra {
-                        Some("ASSIGNED")
-                    } else if s == rr {
-                        Some("REVOKED")
-                    } else {
-                        None
-                    }
-                })
-        })
-        .collect();
+    // Two role events across the two invocations
+    assert_eq!(seen.len(), 2);
 
     assert_eq!(
-        new_events,
+        seen,
         std::vec!["REVOKED", "ASSIGNED"],
         "deactivate then reactivate must emit REVOKED then ASSIGNED"
     );

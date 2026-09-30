@@ -177,19 +177,44 @@ mod suspension_tests {
         });
     }
 
-    // ── 6. Suspending last active admin → InvalidPauseAction (107) ───────────
+    // ── 6. Suspending past MinAdmins → InvalidPauseAction (107) ──────────────
 
+    /// The MinAdmins guard keeps governance recoverable: a suspension that
+    /// would leave fewer than `MinAdmins` effective active admins is rejected,
+    /// so an admin can never be locked out of its own contract.
+    ///
+    /// The caller must differ from the target — self-suspension is rejected
+    /// earlier with `AdminUnchanged` (#111), which would mask this guard.
     #[test]
     #[should_panic(expected = "Error(Contract, #107)")]
     fn test_suspend_below_min_admins_rejected() {
         let env = Env::default();
-        let (contract, super_admin) = setup(&env);
+        let contract = env.register_contract(None, AdminContract);
+        let super_admin = Address::generate(&env);
+        let peer_admin = Address::generate(&env);
+
+        // MinAdmins = 2: with both admins active, suspending either one leaves
+        // fewer than the minimum, so the call must be refused.
+        env.mock_all_auths();
+        env.as_contract(&contract, || {
+            AdminContract::initialize(env.clone(), super_admin.clone(), 2, 100);
+        });
+
+        env.mock_all_auths();
+        env.as_contract(&contract, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                peer_admin.clone(),
+                AdminRole::SuperAdmin,
+            );
+        });
 
         let now = env.ledger().timestamp();
         env.as_contract(&contract, || {
             AdminContract::suspend_admin(
                 env.clone(),
-                super_admin.clone(),
+                peer_admin.clone(),
                 super_admin.clone(),
                 now + 100,
             );

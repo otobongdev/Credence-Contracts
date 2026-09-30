@@ -27,7 +27,7 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::{Address, Env};
 
 // Wire-stable error discriminants (`credence_errors::ContractError`).
@@ -279,10 +279,7 @@ fn insufficient_approvals_rejected_but_recoverable() {
     let id = client.pause(&s1).unwrap();
     let epoch_after_propose = client.get_config_epoch();
 
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_INSUFFICIENT_APPROVALS)
@@ -311,7 +308,8 @@ fn stale_epoch_proposal_cannot_execute() {
     let s1 = signers.get(0).unwrap();
 
     let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
-    e.ledger().with_mut(|l| l.sequence_number = epoch_boundary - 1);
+    e.ledger()
+        .with_mut(|l| l.sequence_number = epoch_boundary - 1);
     let id = client.pause(&s1).unwrap();
 
     let epoch_after_propose = client.get_config_epoch();
@@ -319,10 +317,7 @@ fn stale_epoch_proposal_cannot_execute() {
     let events_before = e.events().all().len();
 
     // The proposal met the threshold in its own epoch; only staleness blocks it.
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_STALE_ADMIN_EPOCH)
@@ -359,16 +354,21 @@ fn duplicate_approval_is_event_free() {
 
     let id = client.pause(&s1).unwrap();
 
-    let events_before = e.events().all().len();
+    // `events().all()` is scoped to the frame of the most recent invocation, so
+    // the event count is read immediately after the call it describes — any
+    // other client call in between would replace that frame.
     client.approve_pause_proposal(&s2, &id);
+    assert_eq!(
+        e.events().all().len(),
+        1,
+        "the first approval emits its approval event"
+    );
     let epoch_after_first = client.get_config_epoch();
-    let events_after_first = e.events().all().len();
-    assert!(events_after_first > events_before, "first approval emits");
 
-    // Duplicate approval: no new event, no epoch bump.
+    // Duplicate approval: no event at all, no epoch bump.
     client.approve_pause_proposal(&s2, &id);
+    assert_eq!(e.events().all().len(), 0, "duplicate approval is silent");
     assert_eq!(client.get_config_epoch(), epoch_after_first);
-    assert_eq!(e.events().all().len(), events_after_first);
 
     client.execute_pause_proposal(&id);
     assert!(client.is_paused());
@@ -384,20 +384,26 @@ fn set_pause_signer_duplicate_is_event_free() {
     client.set_pause_signer(&super_admin, &s1, &true);
 
     let epoch_before = client.get_config_epoch();
-    let events_before = e.events().all().len();
 
+    // Each `set_pause_signer` call is its own invocation, so `events().all()`
+    // reports only the events of the call that just ran.
     client.set_pause_signer(&super_admin, &s1, &true);
+    assert_eq!(e.events().all().len(), 0, "re-enabling a signer is silent");
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
 
     let stranger = Address::generate(&e);
     client.set_pause_signer(&super_admin, &stranger, &false);
+    assert_eq!(
+        e.events().all().len(),
+        0,
+        "disabling an unknown signer is silent"
+    );
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
 
+    // A real transition emits and bumps exactly once.
     client.set_pause_signer(&super_admin, &stranger, &true);
+    assert_eq!(e.events().all().len(), 1, "a real transition emits once");
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
-    assert_eq!(e.events().all().len(), events_before + 1);
 }
 
 // ---------------------------------------------------------------------------

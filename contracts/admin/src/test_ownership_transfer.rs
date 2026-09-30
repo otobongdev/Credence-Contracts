@@ -5,7 +5,7 @@ use soroban_sdk::{Address, Env};
 mod ownership_transfer_tests {
     use super::*;
     use crate::AdminContractClient;
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
+    use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 
     fn create_contract() -> AdminContract {
         AdminContract {}
@@ -251,7 +251,8 @@ mod ownership_transfer_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #107)")]
+    // #111 = ContractError::AdminUnchanged
+    #[should_panic(expected = "Error(Contract, #111)")]
     fn test_transfer_ownership_rejects_same_owner() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
@@ -347,7 +348,8 @@ mod ownership_transfer_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #109)")]
+    // #115 = ContractError::NoPendingAdmin
+    #[should_panic(expected = "Error(Contract, #115)")]
     fn test_accept_ownership_rejects_when_no_pending_owner() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
@@ -531,6 +533,7 @@ mod ownership_transfer_tests {
     /// pending transfer and take corrective action (e.g. rotating credentials or
     /// proposing a different owner).
     #[test]
+    // #112 = ContractError::TimelockNotReady
     #[should_panic(expected = "Error(Contract, #112)")]
     fn test_accept_ownership_rejects_before_timelock_elapses() {
         let env = Env::default();
@@ -556,6 +559,18 @@ mod ownership_transfer_tests {
             AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
         });
     }
+
+    // The `#[should_panic]` expectations below use literal wire codes because
+    // the attribute needs a string literal. These assertions keep those
+    // literals honest if `credence_errors::ContractError` is ever renumbered.
+    use credence_errors::ContractError;
+    const _: () = {
+        assert!(ContractError::AdminUnchanged as u32 == 111);
+        assert!(ContractError::NoPendingAdmin as u32 == 115);
+        assert!(ContractError::TimelockNotReady as u32 == 112);
+        assert!(ContractError::NotAdmin as u32 == 100);
+        assert!(ContractError::ContractPaused as u32 == 106);
+    };
 
     // ═══════════════════════════════════════════════════════════════════════
     // Adversarial regression: stale ownership proposals.
@@ -606,15 +621,26 @@ mod ownership_transfer_tests {
         let super_admin_3 = Address::generate(env);
         let contract_address = env.register_contract(None, AdminContract);
 
+        // One contract call per frame: a mocked authorization frame is
+        // consumed by the first `require_auth`, so several mutations cannot
+        // share a single `as_contract` closure.
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::initialize(env.clone(), super_admin_1.clone(), 1, 100);
+        });
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
             AdminContract::add_admin(
                 env.clone(),
                 super_admin_1.clone(),
                 super_admin_2.clone(),
                 AdminRole::SuperAdmin,
             );
+        });
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
             AdminContract::add_admin(
                 env.clone(),
                 super_admin_1.clone(),
@@ -623,7 +649,12 @@ mod ownership_transfer_tests {
             );
         });
 
-        (contract_address, super_admin_1, super_admin_2, super_admin_3)
+        (
+            contract_address,
+            super_admin_1,
+            super_admin_2,
+            super_admin_3,
+        )
     }
 
     /// A candidate demoted from SuperAdmin during the timelock must not be able
@@ -694,7 +725,10 @@ mod ownership_transfer_tests {
         let events_before = env.events().all().len();
 
         let res = client.try_accept_ownership(&super_admin_2);
-        assert!(res.is_err(), "deactivated candidate must not receive ownership");
+        assert!(
+            res.is_err(),
+            "deactivated candidate must not receive ownership"
+        );
         assert_eq!(
             res.unwrap_err().unwrap(),
             soroban_sdk::Error::from_contract_error(404) // AlreadyDeactivated
@@ -724,8 +758,7 @@ mod ownership_transfer_tests {
 
         // Suspension outlasts the timelock, so the candidate is still inactive
         // at the moment of acceptance.
-        let suspended_until =
-            env.ledger().timestamp() + crate::OWNERSHIP_TRANSFER_TIMELOCK + 3_600;
+        let suspended_until = env.ledger().timestamp() + crate::OWNERSHIP_TRANSFER_TIMELOCK + 3_600;
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::suspend_admin(
@@ -738,7 +771,10 @@ mod ownership_transfer_tests {
         advance_ledger(&env, crate::OWNERSHIP_TRANSFER_TIMELOCK);
 
         let res = client.try_accept_ownership(&super_admin_2);
-        assert!(res.is_err(), "suspended candidate must not receive ownership");
+        assert!(
+            res.is_err(),
+            "suspended candidate must not receive ownership"
+        );
         assert_eq!(
             res.unwrap_err().unwrap(),
             soroban_sdk::Error::from_contract_error(113) // AdminSuspended
@@ -960,7 +996,10 @@ mod ownership_transfer_tests {
 
         env.mock_all_auths();
         let res = client.try_accept_ownership(&caller);
-        assert!(res.is_err(), "uninitialized contract must reject acceptance");
+        assert!(
+            res.is_err(),
+            "uninitialized contract must reject acceptance"
+        );
         assert_eq!(
             res.unwrap_err().unwrap(),
             soroban_sdk::Error::from_contract_error(115) // NoPendingAdmin
@@ -1020,14 +1059,15 @@ mod ownership_transfer_tests {
         });
         advance_ledger(&env, crate::OWNERSHIP_TRANSFER_TIMELOCK);
 
-        let events_before = env.events().all().len();
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
         });
 
-        // `admin_rotated` + `ownership_transfer_accepted`
-        assert_eq!(env.events().all().len(), events_before + 2);
+        // `admin_rotated` + `ownership_transfer_accepted`. `events().all()` is
+        // scoped to the frame of the most recent invocation, so this counts
+        // exactly the events emitted by the acceptance itself.
+        assert_eq!(env.events().all().len(), 2);
         assert_eq!(client.get_owner(), super_admin_2);
         assert_eq!(client.get_pending_owner(), None);
     }
