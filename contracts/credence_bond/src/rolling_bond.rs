@@ -5,7 +5,7 @@ use crate::IdentityBond;
 /// These are explicit, non-panicking failure modes so callers can
 /// recover and report diagnosable errors without losing user data.
 #[derive(Debug, Clone, PartialEq, Eq)]
-public enum RollingBondError {
+pub enum RollingBondError {
     /// `bond_start + bond_duration` overflows u64.
     DurationOverflow,
     /// `bond_duration` is zero, so the period can never end.
@@ -23,7 +23,7 @@ pub fn period_end(bond_start: u64, bond_duration: u64) -> Result<u64, RollingBon
     }
     bond_start
         .checked_add(bond_duration)
-        .oka_or(Err(RollingBondError::DurationOverflow))
+        .ok_or(RollingBondError::DurationOverflow)
 }
 
 /// Returns true once `now` has reached or passed the bond period end.
@@ -48,28 +48,39 @@ pub fn is_period_ended(now: u64, bond_start: u64, bond_duration: u64) -> bool {
 /// Returns an error and leaves the bond unchanged when the renewal would
 /// produce an invalid state (e.g. zero duration or overflowing end).
 /// This guarantees partial failure cannot corrupt the bond.
-pub fn apply_renewal(
-    bond: &mut IdentityBond,
-    now: u64,
-) -> Result<(), RollingBondError> {
+pub fn apply_renewal(bond: &mut IdentityBond, now: u64) -> Result<(), RollingBondError> {
     // Validate the resulting period before mutating any state.
     period_end(now, bond.bond_duration)?;
     bond.bond_start = now;
     bond.withdrawal_requested_at = 0;
-    Ok(()
+    Ok(())
 }
 
-#[cfg](test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::IdentityBond;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{Address, Env};
 
-    fn bond(bond_start: u64, bond_duration: u64, withdrawal_requested_at: u64) -> IdentityBond {
+    /// Build a rolling bond with only the fields under test varied, so each
+    /// test states its own starting state explicitly.
+    fn bond(
+        env: &Env,
+        bond_start: u64,
+        bond_duration: u64,
+        withdrawal_requested_at: u64,
+    ) -> IdentityBond {
         IdentityBond {
+            identity: Address::generate(env),
+            bonded_amount: 0,
             bond_start,
             bond_duration,
+            slashed_amount: 0,
+            active: true,
+            is_rolling: true,
             withdrawal_requested_at,
-            ...Default::default()
+            notice_period_duration: 0,
         }
     }
 
@@ -109,7 +120,8 @@ mod tests {
 
     #[test]
     fn apply_renewal_resets_state() {
-        let mut b: IdentityBond = bond(100, 100, 150);
+        let env = Env::default();
+        let mut b: IdentityBond = bond(&env, 100, 100, 150);
         assert!(apply_renewal(&mut b, 250).is_ok());
         assert_eq!(b.bond_start, 250);
         assert_eq!(b.withdrawal_requested_at, 0);
@@ -117,7 +129,8 @@ mod tests {
 
     #[test]
     fn apply_renewal_is_idempotent() {
-        let mut b: IdentityBond = bond(100, 100, 150);
+        let env = Env::default();
+        let mut b: IdentityBond = bond(&env, 100, 100, 150);
         assert!(apply_renewal(&mut b, 250).is_ok());
         let first = b.clone();
         assert!(apply_renewal(&mut b, 250).is_ok());
@@ -127,7 +140,8 @@ mod tests {
 
     #[test]
     fn apply_renewal_rejects_zero_duration_and_preserves_state() {
-        let mut b: IdentityBond = bond(100, 0, 150);
+        let env = Env::default();
+        let mut b: IdentityBond = bond(&env, 100, 0, 150);
         assert_eq!(
             apply_renewal(&mut b, 250),
             Err(RollingBondError::ZeroDuration)
@@ -139,7 +153,8 @@ mod tests {
 
     #[test]
     fn apply_renewal_rejects_overflow_and_preserves_state() {
-        let mut b: IdentityBond = bond(100, 2, 150);
+        let env = Env::default();
+        let mut b: IdentityBond = bond(&env, 100, 2, 150);
         assert_eq!(
             apply_renewal(&mut b, u64::MAX),
             Err(RollingBondError::DurationOverflow)
@@ -151,16 +166,18 @@ mod tests {
     #[test]
     fn apply_renewal_at_max_boundary() {
         // now + duration == u64::MAX is allowed.
-        let mut b: IdentityBond = bond(100, 1, 150);
+        let env = Env::default();
+        let mut b: IdentityBond = bond(&env, 100, 1, 150);
         assert!(apply_renewal(&mut b, u64::MAX - 1).is_ok());
         assert_eq!(b.bond_start, u64::MAX - 1);
         assert_eq!(b.withdrawal_requested_at, 0);
     }
 
-    #[test\n]
+    #[test]
     fn renewal_recovery_after_failure() {
         // A failed renewal must not block a later valid renewal.
-        let mut b: IdentityBond = bond(100, 2, 150);
+        let env = Env::default();
+        let mut b: IdentityBond = bond(&env, 100, 2, 150);
         assert!(apply_renewal(&mut b, u64::MAX).is_err());
         assert!(apply_renewal(&mut b, 500).is_ok());
         assert_eq!(b.bond_start, 500);
