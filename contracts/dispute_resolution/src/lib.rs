@@ -1,9 +1,10 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
 
 mod error;
-use error::DisputeError;
+pub use error::DisputeError;
 
+#[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DisputeStatus {
     Open,
@@ -11,6 +12,7 @@ pub enum DisputeStatus {
     Closed,
 }
 
+#[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
     pub id: u64,
@@ -23,11 +25,10 @@ pub struct DisputeResolutionContract;
 
 #[contractimpl]
 impl DisputeResolutionContract {
-    // Placeholder for storage key
-    const DISPUTE_KEY: u64 = 0;
-
     pub fn create_dispute(env: Env, resolver: Address) -> u64 {
-        let id = env.prng().generate::<u64>().unwrap_or(1);
+        // Deterministic within a transaction: the host PRNG is seeded per
+        // invocation, so replaying the same transaction yields the same id.
+        let id = env.prng().gen::<u64>();
         let dispute = Dispute {
             id,
             status: DisputeStatus::Open,
@@ -44,7 +45,15 @@ impl DisputeResolutionContract {
             .ok_or(DisputeError::DisputeNotFound)
     }
 
-    pub fn close(env: Env, id: u64) -> Result<(), DisputeError> {
+    /// Close a dispute.
+    ///
+    /// The caller is passed explicitly and must authenticate itself: Soroban
+    /// exposes no "invoker address" to contract code, so passing the address
+    /// and calling `require_auth` is the only way to bind the close to a real
+    /// party.
+    pub fn close(env: Env, caller: Address, id: u64) -> Result<(), DisputeError> {
+        caller.require_auth();
+
         let mut dispute = Self::get_dispute(env.clone(), id)?;
 
         // Invariant 1: No double-close
@@ -53,7 +62,6 @@ impl DisputeResolutionContract {
         }
 
         // Invariant 2: No unauthorized close
-        let caller = env.invoker();
         if caller != dispute.resolver {
             return Err(DisputeError::Unauthorized);
         }

@@ -22,7 +22,18 @@ impl AuthProxy {
     ) {
         owner.require_auth();
         let bond_client = CredenceBondClient::new(&e, &bond_id);
-        bond_client.add_attestation(&owner, &subject, &String::from_str(&e, "fuzz_data"), &nonce);
+        // `contract_id` is the nonce-domain, `deadline` the attestation expiry;
+        // both are part of the signed leaf arguments the mock auth tree must
+        // match exactly.
+        let deadline = e.ledger().timestamp() + 3600;
+        bond_client.add_attestation(
+            &owner,
+            &subject,
+            &String::from_str(&e, "fuzz_data"),
+            &bond_id,
+            &deadline,
+            &nonce,
+        );
     }
 }
 
@@ -58,6 +69,7 @@ fn test_auth_tree_valid() {
     let (bond_id, proxy_id, owner, subject) = setup(&e);
 
     // Leaf invoke: CredenceBond::add_attestation, authorized by `owner`.
+    let deadline = e.ledger().timestamp() + 3600;
     let leaf_invoke = MockAuthInvoke {
         contract: &bond_id,
         fn_name: "add_attestation",
@@ -66,6 +78,8 @@ fn test_auth_tree_valid() {
             owner.to_val(),
             subject.to_val(),
             String::from_str(&e, "fuzz_data").to_val(),
+            bond_id.to_val(),
+            deadline.into_val(&e),
             0_u64.into_val(&e),
         ],
         sub_invokes: &[],

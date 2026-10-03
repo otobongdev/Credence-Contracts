@@ -4,13 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+# `rlib` is required so the integration tests in `tests/` can link the crate.
+crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
 soroban-sdk = { version = "22.0", default-features = false }
 
-[dev_dependencies]
+[dev-dependencies]
 soroban-sdk = { version = "22.0", features = ["testutils"] }
 
 [features]

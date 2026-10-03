@@ -513,13 +513,15 @@ fn test_tie_three_outcomes_equal_weight() {
     let s = setup();
     let arb2 = Address::generate(&s.env);
     let arb3 = Address::generate(&s.env);
-    s.client.register_arbitrator(&arb2, &5);
-    s.client.register_arbitrator(&arb3, &5);
+    // All three arbitrators must carry the same weight (setup registers
+    // `s.arb` with 10) for three outcomes to genuinely tie.
+    s.client.register_arbitrator(&arb2, &10);
+    s.client.register_arbitrator(&arb3, &10);
 
     let id = open_dispute(&s);
     s.client.vote(&s.arb, &id, &1); // outcome 1, weight 10
-    s.client.vote(&arb2, &id, &2); // outcome 2, weight 5 → tie
-    s.client.vote(&arb3, &id, &3); // outcome 3, weight 5 → tie
+    s.client.vote(&arb2, &id, &2); // outcome 2, weight 10 → tie
+    s.client.vote(&arb3, &id, &3); // outcome 3, weight 10 → tie
 
     advance(&s.env, 3601);
     let outcome = s.client.resolve_dispute(&id);

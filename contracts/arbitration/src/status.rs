@@ -1,4 +1,8 @@
-use soroban_sdk::contracterror;
+use soroban_sdk::{contracterror, Vec};
+
+// `vec!` is only used by the in-module test matrix below.
+#[cfg(test)]
+use soroban_sdk::vec;
 
 /// Canonical dispute status machine.
 ///
@@ -64,6 +68,9 @@ pub enum ArbitrationError {
     /// Dispute is still active (Open, Voting, or Resolving).
     /// Used to block operations that require the dispute to be inactive or resolved.
     DisputeActive = 17,
+    /// A creator already has an unresolved dispute in progress and cannot open another
+    /// (`require_no_ongoing_dispute` guard on `create_dispute`).
+    OngoingDispute = 18,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -127,16 +134,21 @@ pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), Arbitratio
 /// the dispute has concluded and downstream operations (e.g. lease/bond
 /// actions) may proceed.
 ///
+/// `Archived` is deliberately treated as *not* terminal here: an archived
+/// dispute can be reopened, so downstream code must not treat it as final.
+///
 /// # Returns
 ///
 /// - `Ok(())` when the dispute is in a terminal state.
-/// - `Err(ArbitrationError::DisputeActive)` when the dispute is still active.
+/// - `Err(ArbitrationError::DisputeActive)` when the dispute is still active
+///   or has been archived (re-openable).
 pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), ArbitrationError> {
     match status {
         DisputeStatus::Resolved | DisputeStatus::Cancelled | DisputeStatus::Tied => Ok(()),
-        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving => {
-            Err(ArbitrationError::DisputeActive)
-        }
+        DisputeStatus::Open
+        | DisputeStatus::Voting
+        | DisputeStatus::Resolving
+        | DisputeStatus::Archived => Err(ArbitrationError::DisputeActive),
     }
 }
 
@@ -724,7 +736,7 @@ mod tests {
 
         #[test]
         fn all_terminal_states_succeed() {
-            let terminal_states = vec![
+            let terminal_states = [
                 DisputeStatus::Resolved,
                 DisputeStatus::Cancelled,
                 DisputeStatus::Tied,
@@ -742,7 +754,7 @@ mod tests {
 
         #[test]
         fn all_active_states_fail() {
-            let active_states = vec![
+            let active_states = [
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
                 DisputeStatus::Resolving,
@@ -913,9 +925,8 @@ mod tests {
             let to = DisputeStatus::Voting;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_transition(from, to))
-                .collect();
+            let results: [Result<(), ArbitrationError>; 10] =
+                core::array::from_fn(|_| require_transition(from, to));
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -927,9 +938,8 @@ mod tests {
             let actual = 123u32;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_kept_promise(promised, actual))
-                .collect();
+            let results: [Result<(), ArbitrationError>; 10] =
+                core::array::from_fn(|_| require_kept_promise(promised, actual));
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -940,9 +950,8 @@ mod tests {
             let status = DisputeStatus::Resolved;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_dispute_resolved(&status))
-                .collect();
+            let results: [Result<(), ArbitrationError>; 10] =
+                core::array::from_fn(|_| require_dispute_resolved(&status));
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -1076,7 +1085,7 @@ mod tests {
         #[test]
         fn all_status_values_covered() {
             // Ensure all 7 states are defined
-            let states = vec![
+            let states = [
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
                 DisputeStatus::Resolving,
@@ -1091,7 +1100,7 @@ mod tests {
 
         #[test]
         fn all_transitions_are_either_valid_or_invalid() {
-            let states = vec![
+            let states = [
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
                 DisputeStatus::Resolving,

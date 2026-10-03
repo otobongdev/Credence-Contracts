@@ -1428,7 +1428,7 @@ mod proptest_extended {
             let (fee, net) = split_bps(amount, bps_val, "mul", "div", "sub");
             if bps_val <= BPS_DENOMINATOR as u32 {
                 prop_assert_eq!(fee.checked_add(net), Some(amount),
-                    "fee {fee} + net {net} != amount {amount}");
+                    "fee {} + net {} != amount {}", fee, net, amount);
             }
         }
     }

@@ -215,6 +215,7 @@ pub struct AggregateStats {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::Ledger as _;
     use soroban_sdk::{vec, Address, Env};
 
     fn setup_bounty(
@@ -255,7 +256,7 @@ mod tests {
         setup_bounty(&env, 2, 500, 500, EscrowStatus::Locked);
         setup_index(&env, &[1, 2]);
 
-        let results = get_high_value_bounties(env, 600, 10);
+        let results = get_high_value_bounties(env.clone(), 600, 10);
         let expected: Vec<u64> = vec![&env, 1u64];
         assert_eq!(results, expected);
     }
@@ -266,7 +267,7 @@ mod tests {
         setup_bounty(&env, 1, 1000, 800, EscrowStatus::PartiallyRefunded);
         setup_index(&env, &[1]);
 
-        let results = get_high_value_bounties(env, 700, 10);
+        let results = get_high_value_bounties(env.clone(), 700, 10);
         let expected: Vec<u64> = vec![&env, 1u64];
         assert_eq!(results, expected);
     }
@@ -371,7 +372,7 @@ mod tests {
         setup_bounty(&env, 1, 1000, 1000, EscrowStatus::Locked);
         setup_index(&env, &[1]);
 
-        let results = query_expiring_bounties(env, 500, 10);
+        let results = query_expiring_bounties(env.clone(), 500, 10);
         let expected: Vec<u64> = vec![&env, 1u64];
         assert_eq!(results, expected);
     }

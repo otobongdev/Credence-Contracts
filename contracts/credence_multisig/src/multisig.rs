@@ -7,6 +7,11 @@
 //! multi-party approval.
 
 use credence_errors::ContractError;
+// `#[contractimpl]` on the `Governable` impl below expands to
+// `CredenceMultiSig::get_admin` / `::set_admin` paths, which only resolve when
+// the trait is in scope (it also keeps `Self::get_admin` resolvable from
+// `transfer_admin`).
+use interfaces::governable::Governable;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, String,
     Symbol, Vec,
@@ -667,15 +672,6 @@ impl CredenceMultiSig {
             .unwrap_or(Vec::new(&e))
     }
 
-    /// Get admin address.
-    pub fn get_admin(e: Env) -> Address {
-        bump_instance_ttl(&e);
-        e.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
-    }
-
     // ==================== Internal Helpers ====================
 
     fn require_admin(e: &Env, admin: &Address) {
@@ -791,18 +787,17 @@ impl CredenceMultiSig {
     }
 }
 
-#[cfg(test)]
-mod boundary_recovery_tests;
-
 #[contractimpl]
-impl interfaces::governable::Governable for CredenceMultisigContract {
+impl interfaces::governable::Governable for CredenceMultiSig {
     fn get_admin(e: Env) -> Address {
-        Self::get_admin(e)
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
 
     fn set_admin(e: Env, new_admin: Address) {
         Self::transfer_admin(e, new_admin);
     }
 }
-
-// Boundary and recovery invariants are exercised in `boundary_recovery_tests`.

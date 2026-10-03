@@ -22,6 +22,10 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
+// `#[contractimpl]` on the `Governable` impl below expands to
+// `CredenceArbitration::get_admin` / `::set_admin` paths, which only resolve
+// when the trait is in scope.
+use interfaces::governable::Governable;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol, Vec,
 };
@@ -848,6 +852,31 @@ impl CredenceArbitration {
         let registry: Vec<Address> = e
             .storage()
             .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+        for addr in registry.iter() {
+            let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
+            e.storage().instance().remove(&voter_casted_key);
+        }
+
+        e.events().publish(
+            (Symbol::new(&e, "dispute_reopened"), dispute_id),
+            from as u32,
+        );
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (from as u32, DisputeStatus::Voting as u32),
+        );
+        Ok(())
+    }
+
+    /// Transfer contract administration to `new_admin` (two-step callers use
+    /// `Governable::set_admin`).
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let admin: Address = e
+            .storage()
+            .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ArbitrationError::NotInitialized));
         admin.require_auth();
@@ -862,7 +891,7 @@ impl CredenceArbitration {
 }
 
 #[contractimpl]
-impl interfaces::governable::Governable for ArbitrationContract {
+impl interfaces::governable::Governable for CredenceArbitration {
     fn get_admin(e: Env) -> Address {
         e.storage()
             .instance()

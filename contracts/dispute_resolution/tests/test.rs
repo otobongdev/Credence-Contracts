@@ -5,18 +5,20 @@ use dispute_resolution::{
 };
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
+fn client(env: &Env) -> DisputeResolutionContractClient<'_> {
+    DisputeResolutionContractClient::new(env, &env.register(DisputeResolutionContract, ()))
+}
+
 #[test]
 fn test_close_succeeds_for_resolver() {
     let env = Env::default();
     let resolver = Address::generate(&env);
-    let client = DisputeResolutionContractClient::new(
-        &env,
-        &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}),
-    );
+    let client = client(&env);
 
+    env.mock_all_auths();
     let dispute_id = client.create_dispute(&resolver);
 
-    assert!(client.close(&dispute_id).is_ok());
+    client.close(&resolver, &dispute_id);
 
     let dispute = client.get_dispute(&dispute_id);
     assert_eq!(dispute.status, dispute_resolution::DisputeStatus::Closed);
@@ -26,17 +28,21 @@ fn test_close_succeeds_for_resolver() {
 fn test_double_close_fails() {
     let env = Env::default();
     let resolver = Address::generate(&env);
-    let client = DisputeResolutionContractClient::new(
-        &env,
-        &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}),
-    );
+    let client = client(&env);
 
+    env.mock_all_auths();
     let dispute_id = client.create_dispute(&resolver);
-    client.close(&dispute_id).unwrap();
 
-    let result = client.try_close(&dispute_id);
+    client.close(&resolver, &dispute_id);
+
+    let result = client.try_close(&resolver, &dispute_id);
     assert!(result.is_err());
-    // Unwrap the error to check specifically if needed
+    // Second close is rejected as AlreadyClosed, not silently repeated.
+    assert_eq!(
+        result,
+        Err(Ok(DisputeError::AlreadyClosed)),
+        "double close must report AlreadyClosed"
+    );
 }
 
 #[test]
@@ -44,14 +50,31 @@ fn test_unauthorized_close_fails() {
     let env = Env::default();
     let resolver = Address::generate(&env);
     let attacker = Address::generate(&env);
-    let client = DisputeResolutionContractClient::new(
-        &env,
-        &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}),
-    );
+    let client = client(&env);
 
+    env.mock_all_auths();
     let dispute_id = client.create_dispute(&resolver);
 
-    // Close with attacker (using try_* to catch the panic)
-    let result = client.try_close(&dispute_id);
-    assert!(result.is_err());
+    // A non-resolver caller (authenticated, but not the resolver) is rejected.
+    let result = client.try_close(&attacker, &dispute_id);
+    assert_eq!(
+        result,
+        Err(Ok(DisputeError::Unauthorized)),
+        "only the resolver may close the dispute"
+    );
+
+    // The dispute is untouched by the rejected attempt.
+    let dispute = client.get_dispute(&dispute_id);
+    assert_eq!(dispute.status, dispute_resolution::DisputeStatus::Open);
+}
+
+#[test]
+fn test_close_unknown_dispute_fails() {
+    let env = Env::default();
+    let resolver = Address::generate(&env);
+    let client = client(&env);
+
+    env.mock_all_auths();
+    let result = client.try_close(&resolver, &42_u64);
+    assert_eq!(result, Err(Ok(DisputeError::DisputeNotFound)));
 }
