@@ -1240,7 +1240,7 @@ impl CredenceTreasury {
 
     pub fn transfer_admin(e: Env, new_admin: Address) {
         bump_instance_ttl(&e);
-        Self::require_not_paused(&e);
+        pausable::require_not_paused(&e);
         let current_admin = Self::get_admin(e.clone());
         current_admin.require_auth();
 
@@ -1253,7 +1253,10 @@ impl CredenceTreasury {
     }
 }
 
-#[contractimpl]
+// `Governable` is a Rust-level abstraction here; `get_admin` is exported by the
+// inherent `#[contractimpl]` block above and `set_admin` delegates to the
+// exported `transfer_admin` entrypoint. Adding `#[contractimpl]` to this trait
+// impl would re-export `get_admin` and collide with the inherent definition.
 impl interfaces::governable::Governable for CredenceTreasury {
     fn get_admin(e: Env) -> Address {
         Self::get_admin(e)

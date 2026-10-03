@@ -21,6 +21,14 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
+// Test-only shims: the crate is `#![no_std]`, so `std`/`alloc` must be
+// re-introduced explicitly for `catch_unwind` panic-path assertions and the
+// `alloc::vec::Vec` used by the access-control matrix.
+#[cfg(test)]
+extern crate alloc;
+#[cfg(test)]
+extern crate std;
+
 /// Signature domain identifier for the CredenceTreasury contract.
 ///
 /// This constant binds signatures to this specific contract, preventing
