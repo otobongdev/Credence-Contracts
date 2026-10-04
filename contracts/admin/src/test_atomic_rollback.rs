@@ -63,10 +63,14 @@ fn rejected_acceptance_rolls_back_when_candidate_is_suspended() {
 
     assert!(client.try_accept_ownership(&candidate).is_err());
 
-    // State is untouched by the rejected call …
     assert_eq!(client.get_owner(), owner);
     assert_eq!(client.get_pending_owner(), Some(candidate));
-    // … and the rolled-back invocation left no observable events behind: the
-    // frame it would have written to is discarded entirely.
-    assert_eq!(env.events().all().len(), 0);
+    // The host exposes only the most recent invocation's events, and a failed
+    // invocation publishes none, so the correct assertion is an empty log —
+    // not a delta against a snapshot taken before a *different* call.
+    assert!(
+        env.events().all().is_empty(),
+        "a rejected invocation must publish no events, or an indexer replays a \
+         rotation that never happened"
+    );
 }

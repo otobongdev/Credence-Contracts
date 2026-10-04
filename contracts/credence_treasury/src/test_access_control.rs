@@ -76,11 +76,11 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "add_depositor",
-                        args: (depositor.clone(),).into_val(env),
+                        args: (caller, depositor.clone()).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.add_depositor(&depositor);
+                client.add_depositor(caller, &depositor);
             },
         },
         PrivilegedCase {
@@ -88,17 +88,17 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
             invoke: |env, client, caller| {
                 let depositor = Address::generate(env);
                 // First add depositor as admin
-                client.add_depositor(&depositor);
+                client.add_depositor(caller, &depositor);
                 env.mock_auths(&[soroban_sdk::testutils::MockAuth {
                     address: caller,
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "remove_depositor",
-                        args: (depositor.clone(),).into_val(env),
+                        args: (caller, depositor.clone()).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.remove_depositor(&depositor);
+                client.remove_depositor(caller, &depositor);
             },
         },
         PrivilegedCase {
@@ -110,28 +110,28 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "add_signer",
-                        args: (signer.clone(),).into_val(env),
+                        args: (caller, signer.clone()).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.add_signer(&signer);
+                client.add_signer(caller, &signer);
             },
         },
         PrivilegedCase {
             name: "remove_signer",
             invoke: |env, client, caller| {
                 let signer = Address::generate(env);
-                client.add_signer(&signer);
+                client.add_signer(caller, &signer);
                 env.mock_auths(&[soroban_sdk::testutils::MockAuth {
                     address: caller,
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "remove_signer",
-                        args: (signer.clone(),).into_val(env),
+                        args: (caller, signer.clone()).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.remove_signer(&signer);
+                client.remove_signer(caller, &signer);
             },
         },
         PrivilegedCase {
@@ -142,11 +142,11 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "set_threshold",
-                        args: (2_u32,).into_val(env),
+                        args: (caller, 2_u32).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.set_threshold(&2_u32);
+                client.set_threshold(caller, &2_u32);
             },
         },
         PrivilegedCase {
@@ -372,7 +372,7 @@ fn test_propose_withdrawal_succeeds_as_signer() {
     let signer = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    client.add_signer(&signer);
+    client.add_signer(&admin, &signer);
     let proposal_id = client.propose_withdrawal(&signer, &recipient, &100_i128);
     let proposal = client.get_proposal(&proposal_id);
     assert_eq!(proposal.recipient, recipient);
@@ -410,7 +410,7 @@ fn test_receive_fee_succeeds_as_depositor() {
     let (client, admin, token, _attacker) = setup(&env);
     let depositor = Address::generate(&env);
 
-    client.add_depositor(&depositor);
+    client.add_depositor(&admin, &depositor);
     client.receive_fee(&depositor, &100_i128, &FundSource::ProtocolFee);
 }
 
@@ -425,16 +425,16 @@ fn test_admin_success_on_privileged_entrypoints() {
 
     // add_depositor
     let depositor = Address::generate(&env);
-    client.add_depositor(&depositor);
+    client.add_depositor(&admin, &depositor);
     assert!(client.is_depositor(&depositor));
 
     // add_signer
     let signer = Address::generate(&env);
-    client.add_signer(&signer);
+    client.add_signer(&admin, &signer);
     assert!(client.is_signer(&signer));
 
     // set_threshold
-    client.set_threshold(&2_u32);
+    client.set_threshold(&admin, &2_u32);
     assert_eq!(client.get_threshold(), 2);
 
     // set_token

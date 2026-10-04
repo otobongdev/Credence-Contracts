@@ -5,13 +5,6 @@ pub const SECONDS_PER_DAY: u64 = 86_400;
 pub struct Timestamp;
 
 impl Timestamp {
-    /// Seconds in a standard day, as an associated constant.
-    ///
-    /// Kept in lock-step with the module-level [`SECONDS_PER_DAY`] so callers
-    /// can write either `credence_math::SECONDS_PER_DAY` or
-    /// `credence_math::Timestamp::SECONDS_PER_DAY` and get the same value.
-    pub const SECONDS_PER_DAY: u64 = crate::timestamp::SECONDS_PER_DAY;
-
     /// Truncates a timestamp (in seconds) to the start of its UTC day.
     #[inline]
     #[must_use]

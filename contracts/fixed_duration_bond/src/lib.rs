@@ -3,7 +3,6 @@
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
-use interfaces::governable::Governable;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Symbol,
 };
@@ -452,7 +451,7 @@ impl FixedDurationBond {
 }
 
 #[contractimpl]
-impl Governable for FixedDurationBond {
+impl interfaces::governable::Governable for FixedDurationBond {
     fn get_admin(e: Env) -> Address {
         e.storage()
             .instance()

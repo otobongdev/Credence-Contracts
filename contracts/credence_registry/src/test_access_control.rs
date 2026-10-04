@@ -25,12 +25,6 @@
 //! | `register_trustless`    | bond contract (self)| Code-hash verification         |
 //! | `get_*` (read-only)     | anyone              | Permissionless views           |
 
-// Test-only shims: this crate is `#![no_std]`, so the std/alloc crates must be
-// re-introduced explicitly for `catch_unwind` (panic-path assertions) and the
-// `alloc::vec::Vec` used by the case matrix below.
-extern crate alloc;
-extern crate std;
-
 use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, IntoVal, Val, Vec};

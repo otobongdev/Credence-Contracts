@@ -1,54 +1,52 @@
-// Single source of truth for exhaustive `ContractError` variant coverage in tests.
+// Single source of truth for exhaustive `ContractError` variant coverage in tests. // a
 //
-// Included from `tests/discriminant_uniqueness.rs` and `src/test_errors.rs`.
-// When adding a variant to `src/lib.rs`, add exactly one row here — do not
-// maintain parallel lists or manually bumped counts elsewhere.
+// Included from `tests/discriminant_uniqueness.rs`, `tests/variant_coverage_sync.rs`
+// and `src/test_errors.rs`. When adding a variant to `src/lib.rs`, add exactly one
+// row here - do not maintain parallel lists or manually bumped counts elsewhere.
 //
-// Row order: numeric wire code within each category block.
+// Row order: numeric wire code, ascending, across every category band.
+// `tests/variant_coverage_sync.rs` pins the row count to this length.
 
-/// Every `ContractError` variant, one row per name, in numeric-code order
-/// within each category block.
+/// Every `ContractError` variant, one row per name, in wire-code order.
 pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     // --- Initialization (1-99) ---
     ("NotInitialized", ContractError::NotInitialized), // 1
     ("AlreadyInitialized", ContractError::AlreadyInitialized), // 2
     // --- Authorization (100-199) ---
-    ("NoPendingAdmin", ContractError::NoPendingAdmin),
-    ("InvalidAdminAddress", ContractError::InvalidAdminAddress),
-    ("AdminUnchanged", ContractError::AdminUnchanged),
-    ("TimelockNotReady", ContractError::TimelockNotReady),
-    ("AdminSuspended", ContractError::AdminSuspended),
-    ("BorrowFrozen", ContractError::BorrowFrozen),
-    (
-        "EmergencyDrainNotPermitted",
-        ContractError::EmergencyDrainNotPermitted,
-    ),
-    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
-    ("TimestampInFuture", ContractError::TimestampInFuture),
-    ("ZeroBytes32", ContractError::ZeroBytes32),
-    ("NotAdmin", ContractError::NotAdmin),
-    ("NotBondOwner", ContractError::NotBondOwner),
-    ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
-    ("NotOriginalAttester", ContractError::NotOriginalAttester),
-    ("NotSigner", ContractError::NotSigner),
+    ("NotAdmin", ContractError::NotAdmin),         // 100
+    ("NotBondOwner", ContractError::NotBondOwner), // 101
+    ("UnauthorizedAttester", ContractError::UnauthorizedAttester), // 102
+    ("NotOriginalAttester", ContractError::NotOriginalAttester), // 103
+    ("NotSigner", ContractError::NotSigner),       // 104
     (
         "UnauthorizedDepositor",
         ContractError::UnauthorizedDepositor,
-    ),
-    ("ContractPaused", ContractError::ContractPaused),
-    ("InvalidPauseAction", ContractError::InvalidPauseAction),
+    ), // 105
+    ("ContractPaused", ContractError::ContractPaused), // 106
+    ("InvalidPauseAction", ContractError::InvalidPauseAction), // 107
     (
         "InsufficientSignatures",
         ContractError::InsufficientSignatures,
-    ),
-    ("MigrationInProgress", ContractError::MigrationInProgress),
+    ), // 108
+    ("InvalidAdminAddress", ContractError::InvalidAdminAddress), // 110
+    ("AdminUnchanged", ContractError::AdminUnchanged), // 111
+    ("TimelockNotReady", ContractError::TimelockNotReady), // 112
+    ("AdminSuspended", ContractError::AdminSuspended), // 113
+    ("BorrowFrozen", ContractError::BorrowFrozen), // 114
+    ("NoPendingAdmin", ContractError::NoPendingAdmin), // 115
+    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger), // 116
+    (
+        "EmergencyDrainNotPermitted",
+        ContractError::EmergencyDrainNotPermitted,
+    ), // 117
+    ("TimestampInFuture", ContractError::TimestampInFuture), // 118
     (
         "InvalidMaxPauseSigners",
         ContractError::InvalidMaxPauseSigners,
     ), // 119
     ("OutsideBusinessHours", ContractError::OutsideBusinessHours), // 120
-    ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch),     // 121
-    ("LeaseExpired", ContractError::LeaseExpired),                 // 122
+    ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch), // 121
+    ("LeaseExpired", ContractError::LeaseExpired), // 122
     (
         "CrossContractCallerMismatch",
         ContractError::CrossContractCallerMismatch,
@@ -56,9 +54,11 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     (
         "MaxPauseSignersExceeded",
         ContractError::MaxPauseSignersExceeded,
-    ), // 125
-    ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch),   // 126
-    ("RoleRequired", ContractError::RoleRequired),                 // 128
+    ), // 124
+    ("MigrationInProgress", ContractError::MigrationInProgress), // 125
+    ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch), // 126
+    ("ZeroBytes32", ContractError::ZeroBytes32),   // 127
+    ("RoleRequired", ContractError::RoleRequired), // 128
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
     ("BondNotActive", ContractError::BondNotActive), // 201
@@ -85,7 +85,6 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("InvalidBondDuration", ContractError::InvalidBondDuration), // 216
     ("InvalidNoticePeriod", ContractError::InvalidNoticePeriod), // 217
     ("BondAlreadyExists", ContractError::BondAlreadyExists), // 218
-    // Codes 219, 220, 221, 225 — shared Bond/Delegation payload mismatches.
     ("OwnerMismatch", ContractError::OwnerMismatch), // 219
     ("TargetMismatch", ContractError::TargetMismatch), // 220
     ("ContractIdMismatch", ContractError::ContractIdMismatch), // 221
@@ -98,7 +97,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("DomainMismatch", ContractError::DomainMismatch), // 225
     ("CursorOutOfRange", ContractError::CursorOutOfRange), // 226
     ("BatchTooLarge", ContractError::BatchTooLarge), // 227
-    ("EmptyBatch", ContractError::EmptyBatch),       // 228
+    ("EmptyBatch", ContractError::EmptyBatch),     // 228
     ("UnsupportedDecimals", ContractError::UnsupportedDecimals), // 229
     (
         "InvalidStringifiedBytes",
@@ -197,9 +196,9 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("PayloadTooOld", ContractError::PayloadTooOld), // 510
     ("DelegationInactive", ContractError::DelegationInactive), // 511
     ("PromiseNotKept", ContractError::PromiseNotKept), // 512
+    ("StaleEpoch", ContractError::StaleEpoch),     // 513
     ("StaleAdminEpoch", ContractError::StaleAdminEpoch), // 514
     ("StaleSignerEpoch", ContractError::StaleSignerEpoch), // 515
-    ("StaleEpoch", ContractError::StaleEpoch),     // 513
     // --- Treasury (600-699) ---
     ("AmountMustBePositive", ContractError::AmountMustBePositive), // 600
     (
@@ -243,7 +242,3 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("DivisionByZero", ContractError::DivisionByZero), // 702
     ("InvalidPercentSplit", ContractError::InvalidPercentSplit), // 703
 ];
-
-/// Generation counter. Bump only when a row is added above; every coverage
-/// test asserts against this value so a new variant cannot be added silently.
-pub const ALL_VARIANTS_COUNT: usize = 116;

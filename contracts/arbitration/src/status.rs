@@ -1,8 +1,4 @@
-use soroban_sdk::{contracterror, Vec};
-
-// `vec!` is only used by the in-module test matrix below.
-#[cfg(test)]
-use soroban_sdk::vec;
+use soroban_sdk::contracterror;
 
 /// Canonical dispute status machine.
 ///
@@ -68,8 +64,8 @@ pub enum ArbitrationError {
     /// Dispute is still active (Open, Voting, or Resolving).
     /// Used to block operations that require the dispute to be inactive or resolved.
     DisputeActive = 17,
-    /// A creator already has an unresolved dispute in progress and cannot open another
-    /// (`require_no_ongoing_dispute` guard on `create_dispute`).
+    /// A creator already has an unresolved dispute tracked as active.
+    /// This is raised when stale/duplicate active markers are still present.
     OngoingDispute = 18,
 }
 
@@ -134,28 +130,31 @@ pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), Arbitratio
 /// the dispute has concluded and downstream operations (e.g. lease/bond
 /// actions) may proceed.
 ///
-/// `Archived` is deliberately treated as *not* terminal here: an archived
-/// dispute can be reopened, so downstream code must not treat it as final.
-///
 /// # Returns
 ///
 /// - `Ok(())` when the dispute is in a terminal state.
-/// - `Err(ArbitrationError::DisputeActive)` when the dispute is still active
-///   or has been archived (re-openable).
+/// - `Err(ArbitrationError::DisputeActive)` when the dispute is still active.
 pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), ArbitrationError> {
     match status {
         DisputeStatus::Resolved | DisputeStatus::Cancelled | DisputeStatus::Tied => Ok(()),
-        DisputeStatus::Open
-        | DisputeStatus::Voting
-        | DisputeStatus::Resolving
-        | DisputeStatus::Archived => Err(ArbitrationError::DisputeActive),
+        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving => {
+            Err(ArbitrationError::DisputeActive)
+        }
+        // `Archived` is not a ruling: the dispute was filed away by an admin and
+        // can be reopened, so consumers must not read it as resolved. This is
+        // deliberately stricter than `require_dispute_inactive`, which lets
+        // archived disputes through for lease work.
+        DisputeStatus::Archived => Err(ArbitrationError::DisputeActive),
     }
 }
 
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
+    use std::vec;
+    use std::vec::Vec;
 
     // ============================================================================
     // Tests for: require_transition
@@ -736,7 +735,7 @@ mod tests {
 
         #[test]
         fn all_terminal_states_succeed() {
-            let terminal_states = [
+            let terminal_states = vec![
                 DisputeStatus::Resolved,
                 DisputeStatus::Cancelled,
                 DisputeStatus::Tied,
@@ -754,7 +753,7 @@ mod tests {
 
         #[test]
         fn all_active_states_fail() {
-            let active_states = [
+            let active_states = vec![
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
                 DisputeStatus::Resolving,
@@ -925,8 +924,9 @@ mod tests {
             let to = DisputeStatus::Voting;
 
             // Simulate multiple concurrent checks
-            let results: [Result<(), ArbitrationError>; 10] =
-                core::array::from_fn(|_| require_transition(from, to));
+            let results: Vec<_> = (0..10)
+                .map(|_| require_transition(from, to))
+                .collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -938,8 +938,9 @@ mod tests {
             let actual = 123u32;
 
             // Simulate multiple concurrent checks
-            let results: [Result<(), ArbitrationError>; 10] =
-                core::array::from_fn(|_| require_kept_promise(promised, actual));
+            let results: Vec<_> = (0..10)
+                .map(|_| require_kept_promise(promised, actual))
+                .collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -950,8 +951,9 @@ mod tests {
             let status = DisputeStatus::Resolved;
 
             // Simulate multiple concurrent checks
-            let results: [Result<(), ArbitrationError>; 10] =
-                core::array::from_fn(|_| require_dispute_resolved(&status));
+            let results: Vec<_> = (0..10)
+                .map(|_| require_dispute_resolved(&status))
+                .collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -1085,7 +1087,7 @@ mod tests {
         #[test]
         fn all_status_values_covered() {
             // Ensure all 7 states are defined
-            let states = [
+            let states = vec![
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
                 DisputeStatus::Resolving,
@@ -1100,7 +1102,7 @@ mod tests {
 
         #[test]
         fn all_transitions_are_either_valid_or_invalid() {
-            let states = [
+            let states = vec![
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
                 DisputeStatus::Resolving,
